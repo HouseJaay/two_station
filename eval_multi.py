@@ -1,4 +1,7 @@
 #!/usr/bin/eny python
+# evaluate events that may be interferenced by another event
+# only calculate first station of station pairs
+#TODO two station 
 
 import pandas
 from distaz import distaz
