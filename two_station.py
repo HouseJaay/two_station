@@ -1,6 +1,4 @@
 #! /usr/bin/env python
-# server version 
-# dev1 is cluster version
 
 import obspy
 from scipy import signal
@@ -8,15 +6,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 import distaz
 
-delta=0.025
-npts=213163
-dist=7.78
+data2='CUT_S05C.BHZ'
+data1='CUT_S06C.BHZ'
+st=obspy.read(data1)  # attention: sequence large distance first
+st+=obspy.read(data2) 
+delta=st[0].stats.delta
+npts=st[0].stats.npts
+
+dist=73
 umin=2
 umax=8
-pmin=2
-pmax=80
-data1='CUT_S05C.BHZ'
-data2='CUT_S06C.BHZ'
+pmin=20
+pmax=150
 
 len_cor=2*npts-1
 t=np.arange(1,(len_cor+1)/2)*delta
@@ -29,15 +30,17 @@ U,P=np.meshgrid(u,p)
 
 def pick(cor,uini):
     for i in range(len(u)):
-        if(u[i]<uini):
+        if(u[i]<=uini):
             j=i
             break
+    if(j==0 or j==(len(u)-1)):
+        return -1
     if(cor[j+1]>cor[j]):
-        while(cor[j+1]>cor[j]):
+        while(j<(len(u)-1) and cor[j+1]>cor[j]):
             j+=1
         i=j
     elif(cor[j-1]>cor[j]):
-        while(cor[j-1]>cor[j]):
+        while(j>0 and cor[j-1]>cor[j]):
             j-=1
         i=j
     return u[i]    
@@ -47,28 +50,32 @@ def onclick(event):
     click_x,click_y=event.xdata,event.ydata
 
 
-st=obspy.read(data1)  # attention: sequence
-st+=obspy.read(data2) 
 row=0
 for period in range(pmin,pmax):
-    b=signal.firwin(501,[1.0/(period+0.2),1.0/(period-0.2)],window=('kaiser',9),nyq=1/delta/2,pass_zero=False)
+    b=signal.firwin(1001,[1.0/(period+0.2),1.0/(period-0.2)],window=('kaiser',9),nyq=1/delta/2,pass_zero=False)
 # cut window
    #st[0].data=st[0].data*w1
     #st[1].data=st[1].data*w2
 # filter
     array1=signal.lfilter(b,1,st[0].data)
     array2=signal.lfilter(b,1,st[1].data)
+    
+    test=obspy.read(data1)
+    test+=obspy.read(data2)
+    test[0].data=signal.lfilter(b,1,st[0].data)
+    test[1].data=signal.lfilter(b,1,st[1].data)
+    test[0].write(data1+'_'+str(period),format='SAC')
+    test[1].write(data2+'_'+str(period),format='SAC')
+    
 # normalize
-    array2=array2*array1.max()/array2.max()
-    #st[0].write('g11_bp20uw',format='SAC')
-    #st[1].write('g10_bp20uw',format='SAC')
+    array1=array1/array1.max()
+    array2=array2/array2.max()
 # correlate , first input signal has larger epicenter distance
     corr=signal.correlate(array1,array2,mode='full')
 # data prepare
     cor=corr[(len_cor+1)/2:len_cor]
     cor=cor[mask]
     cor=cor/cor.max() #normalize
-    print(cor.max())
     COR[row]=cor
     row+=1
 # plot correlation function   
@@ -92,8 +99,14 @@ print(pini,uini)
 utemp=uini
 for period in range(pini+1,pmax,1):
     utemp=pick(COR[period-pmin],utemp)
-    print(period,utemp)
+    if(utemp > 0):
+        print(period,utemp)
+    else:
+        break
 utemp=uini
 for period in range(pini-1,pmin-1,-1):
     utemp=pick(COR[period-pmin],utemp)
-    print(period,utemp)
+    if(utemp > 0):
+        print(period,utemp)
+    else:
+        break
