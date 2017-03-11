@@ -5,9 +5,12 @@ import obspy
 import pandas
 from distaz import distaz
 import os
+from subprocess import Popen,PIPE
 
 VMAX = 8
 VMIN = 2
+freq_lim = (0.005, 0.006, 1, 1.2)
+decim = (2, 5)
 file_pairs = 'pair_temp'
 in_prefix = 'temp/'
 out_prefix = 'out/'
@@ -26,8 +29,11 @@ def read_time(evt,n):
     (year,month,day,hour,minute,sec) = (evt['year'][n],evt['month'][n],evt['day'][n],evt['hour'][n],evt['min'][n],evt['sec'][n])
     return UTCDateTime(year,month,day,hour,minute,sec)
 
-def file_path(dir,ch):
-    return dir + "/*" + ch + "*.SAC"
+def file_path(dir,ch,type):
+    if(type=="sac"):
+        return dir + "/*" + ch + "*.SAC"
+    elif(type=="resp"):
+        return dir + "/RESP*" + ch
 
 def check(stats,file1,file2):
     st = obspy.read(file1,headonly=True)
@@ -37,6 +43,17 @@ def check(stats,file1,file2):
         return True
     else:
         return False
+
+def trans(file,file_resp,f,d):
+    p = Popen(['sac'], stdin=PIPE, stdout=PIPE)
+    s = ""
+    s += "r %s\n" % file
+    s += "decimate %d;decimate %d\n" % (d[0],d[1])
+    s += "rmean;rtrend\n"
+    s += "transfer from evalresp fname %s to none freq %f %f %f %f\n" % (file_resp,f[0],f[1],f[2],f[3])
+    s += "w over\n"
+    s += "q\n"
+    p.communicate(s.encode())
 
 def cut(file,start,end):
     st = obspy.read(file)
@@ -64,8 +81,10 @@ for np in range(len(pair)):
         dist = (d1+d2)/2.0
         start = evtime + dist/VMAX
         end = evtime + dist/VMIN
-        filelist1 = os.popen("ls "+file_path(pair['sta1'][np],CH)).read().split("\n")
-        filelist2 = os.popen("ls "+file_path(pair['sta2'][np],CH)).read().split("\n")
+        filelist1 = os.popen("ls "+file_path(pair['sta1'][np],CH,'sac')).read().split("\n")
+        filelist2 = os.popen("ls "+file_path(pair['sta2'][np],CH,'sac')).read().split("\n")
+        resp1 = os.popen("ls "+file_path(pair['sta1'][np],CH,'resp')).read().split("\n")
+        resp2 = os.popen("ls "+file_path(pair['sta2'][np],CH,'resp')).read().split("\n")
         file1 = []
         file2 = []
         if(not (pick(start,end,filelist1,file1) and pick(start,end,filelist2,file2)) ):
@@ -75,5 +94,7 @@ for np in range(len(pair)):
         stats = []
         if( not check(stats,file1[0],file2[0]) ):
             continue
+        trans(file1[0],resp1[0],freq_lim,decim)
+        trans(file2[0],resp2[0],freq_lim,decim)
         cut(file1[0],start,end)
         cut(file2[0],start,end)
