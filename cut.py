@@ -51,11 +51,11 @@ def trans(file,file_resp,f,d):
     s += "decimate %d;decimate %d\n" % (d[0],d[1])
     s += "rmean;rtrend\n"
     s += "transfer from evalresp fname %s to none freq %f %f %f %f\n" % (file_resp,f[0],f[1],f[2],f[3])
-    s += "w over\n"
+    s += "w append .temp\n"
     s += "q\n"
     p.communicate(s.encode())
 
-def cut(file,start,end):
+def cut(file,start,end,ch,dist):
     st = obspy.read(file)
     delta = st[0].stats.delta
     width = end - start
@@ -63,7 +63,8 @@ def cut(file,start,end):
     n = int((start - st[0].stats.starttime)/delta)
     st[0].data = st[0].data[n:n+npts]
     st[0].stats.starttime = start
-    st[0].write(outdir + "/" + st[0].stats.station + ".SAC",format='SAC')
+    st[0].stats.sac.unused23 = int(dist)
+    st[0].write(outdir + "/" + st[0].stats.station + "." + ch,format='SAC')
     
 
 pair = pandas.read_table(file_pairs,sep='\s+')
@@ -79,12 +80,15 @@ for np in range(len(pair)):
         d1 = distaz(evla,evlo,stla1,stlo1).degreesToKilometers()
         d2 = distaz(evla,evlo,stla2,stlo2).degreesToKilometers() 
         dist = (d1+d2)/2.0
+        ds2 = abs(d1-d2)
+        ds = distaz(stla1,stlo1,stla2,stlo2).degreesToKilometers()
+        print(ds,ds2)
         start = evtime + dist/VMAX
         end = evtime + dist/VMIN
-        filelist1 = os.popen("ls "+file_path(pair['sta1'][np],CH,'sac')).read().split("\n")
-        filelist2 = os.popen("ls "+file_path(pair['sta2'][np],CH,'sac')).read().split("\n")
-        resp1 = os.popen("ls "+file_path(pair['sta1'][np],CH,'resp')).read().split("\n")
-        resp2 = os.popen("ls "+file_path(pair['sta2'][np],CH,'resp')).read().split("\n")
+        filelist1 = os.popen("ls "+file_path(pair['sta1'][np],CH,'sac')).read().split()
+        filelist2 = os.popen("ls "+file_path(pair['sta2'][np],CH,'sac')).read().split()
+        resp1 = os.popen("ls "+file_path(pair['sta1'][np],CH,'resp')).read().split()
+        resp2 = os.popen("ls "+file_path(pair['sta2'][np],CH,'resp')).read().split()
         file1 = []
         file2 = []
         if(not (pick(start,end,filelist1,file1) and pick(start,end,filelist2,file2)) ):
@@ -96,5 +100,5 @@ for np in range(len(pair)):
             continue
         trans(file1[0],resp1[0],freq_lim,decim)
         trans(file2[0],resp2[0],freq_lim,decim)
-        cut(file1[0],start,end)
-        cut(file2[0],start,end)
+        cut(file1[0] + '.temp',start,end,CH,d1)
+        cut(file2[0] + '.temp',start,end,CH,d2)
