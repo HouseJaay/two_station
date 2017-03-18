@@ -139,4 +139,5 @@ pair = pandas.read_table(sta_pairs,sep='\s+')
 for n in range(len(pair)):
     (dist, fl, fo) = read_pairs(pair, n, CH)
     for ne in range(len(fl)):
+        print("output file is %s" % fo[ne])
         two_station(fl[ne][0], fl[ne][1], dist, VRANGE, PRANGE, fo[ne])
