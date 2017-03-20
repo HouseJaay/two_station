@@ -4,7 +4,7 @@
 
 import pandas
 import distaz
-filename_sta='sta_pairs'
+filename_sta='pair_temp'
 filename_evt='event'
 out_prefix="temp/"
 

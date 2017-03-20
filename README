@@ -1,2 +1,2 @@
 Calculating phase velocity of surface wave using two-station method.
-
+mk_pairs.py -> cal_az.py -> eval_multi.py -> cut.py -> two_station.py

@@ -6,9 +6,10 @@ import pandas
 from distaz import distaz
 import os
 from subprocess import Popen,PIPE
+import sys
 
-VMAX = 8
-VMIN = 2
+VMAX = 7
+VMIN = 2.5
 freq_lim = (0.005, 0.006, 1, 1.2)
 decim = (2, 5)
 file_pairs = 'pair_temp'
@@ -92,6 +93,7 @@ for np in range(len(pair)):
         file1 = []
         file2 = []
         if(not (pick(start,end,filelist1,file1) and pick(start,end,filelist2,file2)) ):
+            print("event in two files\n",file=sys.stderr)
             continue
         outdir = out_prefix + pair['sta1'][np] + '_' + pair['sta2'][np] + "/" + evtime.strftime("%Y_%m_%d_%H")
         os.system("mkdir -p "+outdir)

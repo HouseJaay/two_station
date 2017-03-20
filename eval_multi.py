@@ -2,6 +2,7 @@
 # evaluate events that may be interferenced by another event
 # only calculate first station of station pairs
 #TODO two station 
+# 3.20 add pick by epicenter and depth
 
 import pandas
 from distaz import distaz
@@ -9,7 +10,7 @@ from obspy.core import UTCDateTime
 
 VMIN = 2.5
 VMAX = 7
-file_pair = 'sta_pairs'
+file_pair = 'pair_temp'
 file_event = 'event'
 in_prefix = 'temp/'
 
@@ -22,6 +23,30 @@ def cal_window(stla,stlo,evla,evlo,evtime,vmin,vmax):
 def read_time(evt,n):
     (year,month,day,hour,minute,sec) = (evt['year'][n],evt['month'][n],evt['day'][n],evt['hour'][n],evt['min'][n],evt['sec'][n])
     return UTCDateTime(year,month,day,hour,minute,sec)
+
+def check_window(evt,start_p,end_p,stla,stlo,vmin,vmax):
+    for j in evt.index:
+        evla,evlo = evt['lat'][j],evt['lon'][j]
+        time = read_time(evt,j)
+        (start,end) = cal_window(stla,stlo,evla,evlo,time,vmin,vmax)
+        if( abs(start-start_p) < 0.1 and abs(end-end_p) < 0.1):
+            continue
+        elif(not (end_p < start or start_p > end)):
+            return True
+    return False
+
+def check_epdist(evla,evlo,stla,stlo):
+    dist = distaz(stla,stlo,evla,evlo).degreesToKilometers()
+    if(dist > 30000):
+        return True
+    else:
+        return False
+
+def check_dep(evdp):
+    if(evdp > 100):
+        return True
+    else:
+        return False
 
 evt = pandas.read_table(file_event,sep='\s+')
 pairs = pandas.read_table(file_pair,sep='\s+')
@@ -38,17 +63,11 @@ for np in range(len(pairs)):
         (start_p,end_p) = cal_window(stla,stlo,evla_p,evlo_p,time_p,VMIN,VMAX)
         mask = ( abs(evt['jday'] - evt_p['jday'][i]) < 2 ) & ( evt['year'] == evt_p['year'][i] )
         evt_temp = evt[mask]
-        flag = 0
-        for j in evt_temp.index:
-            evla,evlo = evt_temp['lat'][j],evt_temp['lon'][j]
-            time = read_time(evt_temp,j)
-            (start,end) = cal_window(stla,stlo,evla,evlo,time,VMIN,VMAX)
-            if( abs(start-start_p) < 0.1 and abs(end-end_p) < 0.1):
-                continue
-            if( not (end_p < start or start_p > end)):
-                flag = 1
-                break
-        if( flag == 1):
+        b1 = check_window(evt_temp,start_p,end_p,stla,stlo,VMIN,VMAX)
+        b2 = check_epdist(evla_p,evlo_p,stla,stlo)
+        b3 = check_dep(evt_p['dep'][i])
+        if(b1 or b2 or b3):
+            print(b1,b2,b3,i)
             no_list.append(i)
         else:
             yes_list.append(i)
