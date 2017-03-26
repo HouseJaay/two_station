@@ -17,6 +17,11 @@ def read_time(evt,n):
     (year,month,day,hour,minute,sec) = (evt['year'][n],evt['month'][n],evt['day'][n],evt['hour'][n],evt['min'][n],evt['sec'][n])
     return UTCDateTime(year,month,day,hour,minute,sec)
 
+def norm(array):
+    ma,mi = array.max(),array.min()
+    m = max(abs(ma),abs(mi))
+    return array/m
+
 def read_pairs(pair,n,ch):
     stla1,stlo1 = pair['lat1'][n],pair['lon1'][n]
     stla2,stlo2 = pair['lat2'][n],pair['lon2'][n]
@@ -56,13 +61,13 @@ def onclick(event):
     global click_x,click_y
     click_x,click_y=event.xdata,event.ydata
 
-
-#file2 = 'out/S05C_S06C/2006_02_04_14/S05C.BHZ'
-#file1 = 'out/S05C_S06C/2006_02_04_14/S06C.BHZ'
-#file_out = 'out/S05C_S06C.2006_02_04_14.disp'
 def two_station(file1,file2,dist,vrange,prange,file_out):
-    st = obspy.read(file1)  # attention: sequence large distance first
-    st += obspy.read(file2) 
+    try:
+        st = obspy.read(file1)  
+        st += obspy.read(file2)
+    except FileNotFoundError:
+        print("file doesn't exist:",file1,file2)
+        return
     delta = st[0].stats.delta
     npts = st[0].stats.npts
 
@@ -79,30 +84,22 @@ def two_station(file1,file2,dist,vrange,prange,file_out):
     for period in range(prange[0],prange[1]):
         b = signal.firwin(1001,[1.0/(period+0.2),1.0/(period-0.2)],window=('kaiser',9),nyq=1/delta/2,pass_zero=False)
 # filter
-# TODO sequence
+# sequence
         if(st[0].stats.sac.unused23 > st[1].stats.sac.unused23):
             array1 = signal.lfilter(b,1,st[0].data)
             array2 = signal.lfilter(b,1,st[1].data)
         else:
             array2 = signal.lfilter(b,1,st[0].data)
             array1 = signal.lfilter(b,1,st[1].data)
-        """
-        test=obspy.read(file1)
-        test+=obspy.read(file2)
-        test[0].data=signal.lfilter(b,1,test[0].data)
-        test[1].data=signal.lfilter(b,1,test[1].data)
-        test[0].write(file1+'_'+str(period),format='SAC')
-        test[1].write(file2+'_'+str(period),format='SAC')
-        """
 # normalize
-        array1 = array1/array1.max()
-        array2 = array2/array2.max()
+        array1 = norm(array1)
+        array2 = norm(array2)
 # correlate , first input signal has larger epicenter distance
         corr = signal.correlate(array1,array2,mode='full')
 # data prepare
         cor = corr[int((len_cor+1)/2):len_cor]
         cor = cor[mask]
-        cor = cor/cor.max() #normalize
+        cor = norm(cor)
         COR[row] = cor
         row+=1
 # pick
@@ -132,8 +129,6 @@ def two_station(file1,file2,dist,vrange,prange,file_out):
             break
     f.close()
 
-#two_station(file1, file2, 73, VRANGE, PRANGE, file_out)
-
 
 pair = pandas.read_table(sta_pairs,sep='\s+')
 for n in range(len(pair)):
@@ -141,3 +136,4 @@ for n in range(len(pair)):
     for ne in range(len(fl)):
         print("output file is %s" % fo[ne])
         two_station(fl[ne][0], fl[ne][1], dist, VRANGE, PRANGE, fo[ne])
+
