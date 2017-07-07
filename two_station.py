@@ -7,38 +7,29 @@ import numpy as np
 import distaz
 import pandas
 from obspy.core import UTCDateTime
+import obspy.signal.filter
 
-sta_pairs = 'pair_temp'
-VRANGE = (2,8)
-PRANGE = (20,100)
+VRANGE = (3,5)
 CH = 'BHZ'
 
-def read_time(evt,n):
-    (year,month,day,hour,minute,sec) = (evt['year'][n],evt['month'][n],evt['day'][n],evt['hour'][n],evt['min'][n],evt['sec'][n])
-    return UTCDateTime(year,month,day,hour,minute,sec)
+def pick_global(array):
+    arr_env = obspy.signal.filter.envelope(array)
+    return arr_env.argmax()
+
+def window(array,n0,width):
+    l = n0 - width
+    r = n0 + width
+    if(l<0): l=0
+    if(r>=len(array)): r=len(array)-1
+    w = np.zeros(len(array))
+    w[l:r] = 1
+    array = w*array
+    return array
 
 def norm(array):
     ma,mi = array.max(),array.min()
     m = max(abs(ma),abs(mi))
     return array/m
-
-def read_pairs(pair,n,ch):
-    stla1,stlo1 = pair['lat1'][n],pair['lon1'][n]
-    stla2,stlo2 = pair['lat2'][n],pair['lon2'][n]
-    dist = distaz.distaz(stla1,stlo1,stla2,stlo2).degreesToKilometers()
-    sac_path = 'out/' + pair['sta1'][n] + '_' + pair['sta2'][n] + '/'
-    evt_file = 'temp/' + pair['sta1'][n] + '_' + pair['sta2'][n] + '.lst'
-    evt = pandas.read_table(evt_file,sep='\s+')
-    filelist = []
-    fileout = []
-    for i in range(len(evt)):
-        evtime = read_time(evt,i)
-        evt_dir = evtime.strftime("%Y_%m_%d_%H") + '/'
-        file1 = sac_path + evt_dir + pair['sta1'][n] + '.' + ch
-        file2 = sac_path + evt_dir + pair['sta2'][n] + '.' + ch
-        filelist.append((file1,file2))
-        fileout.append('out/' + pair['sta1'][n] + '_' + pair['sta2'][n] + '.' + evtime.strftime("%Y_%m_%d_%H") + '.disp')
-    return dist,filelist,fileout
 
 def pick(cor,uini,u):
     for i in range(len(u)):
@@ -79,21 +70,49 @@ def two_station(file1,file2,dist,vrange,prange,file_out):
     p = np.arange(prange[0], prange[1])
     COR = np.zeros((len(p),len(v)))
     V,P = np.meshgrid(v,p)
+    
+# sequence
+    if(st[0].stats.sac.unused23 > st[1].stats.sac.unused23):
+        tr1 = st[0].copy()
+        tr2 = st[1].copy()
+    else:
+        tr1 = st[1].copy()
+        tr2 = st[0].copy()
+# plot prepare
+    rows = int((prange[1]-prange[0])/10)
+    fig,axes = plt.subplots(nrows = rows+1, ncols=2) 
+    ax_t = np.arange(len(tr1.data))*delta
+    axes[0,0].plot(ax_t,tr1.data,'b-')
+    axes[0,0].set_title(tr1.stats.station)
+    axes[0,1].plot(ax_t,tr2.data,'b-')
+    axes[0,1].set_title(tr2.stats.station)
 
     row=0
     for period in range(prange[0],prange[1]):
         b = signal.firwin(1001,[1.0/(period+0.2),1.0/(period-0.2)],window=('kaiser',9),nyq=1/delta/2,pass_zero=False)
 # filter
-# sequence
-        if(st[0].stats.sac.unused23 > st[1].stats.sac.unused23):
-            array1 = signal.lfilter(b,1,st[0].data)
-            array2 = signal.lfilter(b,1,st[1].data)
-        else:
-            array2 = signal.lfilter(b,1,st[0].data)
-            array1 = signal.lfilter(b,1,st[1].data)
+        array1 = signal.lfilter(b,1,tr1.data)
+        array2 = signal.lfilter(b,1,tr2.data)
 # normalize
         array1 = norm(array1)
+        array1 = signal.detrend(array1)
         array2 = norm(array2)
+        array2 = signal.detrend(array2)
+# window and plot
+        #a1_temp = np.copy(array1)
+        #a2_temp = np.copy(array2)
+        #width = int(2*period/delta)
+        #t1 = pick_global(array1)
+        #t2 = pick_global(array2)
+        #array1 = window(array1,t1,width)
+        #array2 = window(array2,t2,width)
+        if(row%10==0):
+            nrow = int(row/10)+1
+            #axes[nrow,0].plot(ax_t,a1_temp,'b-')
+            #axes[nrow,1].plot(ax_t,a2_temp,'b-')
+            axes[nrow,0].plot(ax_t,array1,'b-')
+            axes[nrow,1].plot(ax_t,array2,'b-')
+
 # correlate , first input signal has larger epicenter distance
         corr = signal.correlate(array1,array2,mode='full')
 # data prepare
@@ -103,15 +122,21 @@ def two_station(file1,file2,dist,vrange,prange,file_out):
         COR[row] = cor
         row+=1
 # pick
+    plt.show()
+
     fig,ax = plt.subplots()
     cf = ax.contourf(P,V,COR)
     fig.colorbar(cf)
     fig.canvas.mpl_connect('button_press_event', onclick)
     plt.show()
-    
-    f = open(file_out,'w')
+    hand = input('input d: do not keep  this dispersion file\n')
+    if(hand == 'd'):
+        return
+    else:
+        pass
     pini = int(click_x)
     uini = pick(COR[pini-prange[0]], click_y, v)
+    f = open(file_out,'w')
     f.write("%d %f\n" % (pini,uini))
     utemp = uini
     for period in range(pini+1, prange[1] ,1):
@@ -129,11 +154,8 @@ def two_station(file1,file2,dist,vrange,prange,file_out):
             break
     f.close()
 
-
-pair = pandas.read_table(sta_pairs,sep='\s+')
-for n in range(len(pair)):
-    (dist, fl, fo) = read_pairs(pair, n, CH)
-    for ne in range(len(fl)):
-        print("output file is %s" % fo[ne])
-        two_station(fl[ne][0], fl[ne][1], dist, VRANGE, PRANGE, fo[ne])
+def do_ts(Disp,PRANGE=(20,60)):
+    for index,e in Disp.evt.iterrows():
+        dist = abs(e['dist'][0]-e['dist'][1])
+        two_station(e['data1'],e['data2'],dist,VRANGE,PRANGE,e['disp'])
 
