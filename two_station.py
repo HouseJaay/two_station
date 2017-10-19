@@ -4,7 +4,6 @@ import obspy
 from scipy import signal
 import matplotlib.pyplot as plt
 import numpy as np
-import distaz
 import pandas
 from obspy.core import UTCDateTime
 import obspy.signal.filter
